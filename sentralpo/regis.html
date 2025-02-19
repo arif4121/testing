@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Form Pendaftaran</title>
+    <link rel="stylesheet" href="css/regis.css">
+</head>
+<body>
+
+    <div class="container">
+    <h2>Form Pendaftaran</h2>
+    <form action="logic/regis.php" method="POST">
+        <label for="nama">Nama:</label><br>
+        <input type="text" id="nama_user" name="nama" required><br>
+
+        <label for="passwd">Password:</label><br>
+        <input type="password" id="passwd" name="passwd" required><br>
+
+        <input type="submit" value="Daftar">
+    </form>
+</div>
+
+</body>
+</html>
