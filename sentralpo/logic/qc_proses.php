@@ -1,15 +1,15 @@
 <?php
+ob_start(); // Tambahkan ini di awal file
 session_start();
-include '../connection.php'; // Hubungkan ke database
+include '../connection.php';
 
-header('Content-Type: application/json'); // Respon dalam bentuk JSON
+header('Content-Type: application/json');
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['barcode']) && isset($_POST['action'])) {
     $barcode = $_POST['barcode'];
-    $action = $_POST['action']; // received atau rejected
+    $action = $_POST['action'];
     $examiner = isset($_POST['examiner']) ? $_POST['examiner'] : 'Anonymous';
 
-    // Cek apakah barcode tersebut ada di tabel file
     $checkSql = "SELECT * FROM file WHERE barcode = ?";
     $stmtCheck = $conn->prepare($checkSql);
     $stmtCheck->bind_param("s", $barcode);
@@ -17,41 +17,54 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['barcode']) && isset($_
     $resultCheck = $stmtCheck->get_result();
 
     if ($resultCheck->num_rows > 0) {
-        // Jika barcode ditemukan, proses berdasarkan action
-        $checkPenampungSql = "SELECT * FROM penampung WHERE barcode = ?";
-        $stmtCheckPenampung = $conn->prepare($checkPenampungSql);
-        $stmtCheckPenampung->bind_param("s", $barcode);
-        $stmtCheckPenampung->execute();
-        $resultCheckPenampung = $stmtCheckPenampung->get_result();
+        $fileData = $resultCheck->fetch_assoc();
+        $tgl_tayang = $fileData['tgl_tayang'];
+        $nama_file = $fileData['nama_file'];
 
-        if ($resultCheckPenampung->num_rows > 0) {
-            // Update penampung jika sudah ada
-            $stmt = $conn->prepare("UPDATE penampung SET status = ?, examiner = ?, processed_at = NOW() WHERE barcode = ?");
-            $stmt->bind_param("sss", $action, $examiner, $barcode);
+        // Tentukan status_qc berdasarkan $action
+        $status_qc = null;
+        if ($action === 'received') {
+            $status_qc = 'received';
+        } elseif ($action === 'rejected') {
+            $status_qc = 'rejected';
         } else {
-            // Insert jika belum ada di penampung
-            $stmt = $conn->prepare("INSERT INTO penampung (barcode, status, examiner, processed_at) VALUES (?, ?, ?, NOW())");
-            $stmt->bind_param("sss", $barcode, $action, $examiner);
+            error_log("Action tidak valid: " . $action);
+            echo json_encode(['success' => false, 'message' => 'Action tidak valid']);
+            exit;
         }
 
-        $stmt->execute();
-        $stmt->close();
+        $stmt = $conn->prepare("INSERT INTO penampung (barcode, nama_file, tgl_tayang, examiner, status_qc, status_kirim) 
+        VALUES (?, ?, ?, ?, ?, ?) 
+        ON DUPLICATE KEY UPDATE 
+        status_qc = ?, examiner = ?, tgl_tayang = ?, nama_file = ?");
 
-        // Kirim respons sukses
-        $response = ['success' => true, 'message' => 'File processed'];
+        if ($stmt) {
+            $status_kirim = 'belum'; // nilai default
+
+            // Bind semua parameter sekaligus
+            $stmt->bind_param("ssssssssss", $barcode, $nama_file, $tgl_tayang, $examiner, $status_qc, $status_kirim, $status_qc, $examiner, $tgl_tayang, $nama_file);
+
+            if ($stmt->execute()) {
+                $response = ['success' => true, 'message' => 'File processed'];
+            } else {
+                error_log("Error query: " . $stmt->error);
+                $response = ['success' => false, 'message' => 'Error query: ' . $stmt->error];
+            }
+            $stmt->close();
+        } else {
+            error_log("Error prepare statement: " . $conn->error);
+            $response = ['success' => false, 'message' => 'Error prepare statement: ' . $conn->error];
+        }
+
     } else {
-        // Kirim respons jika file tidak ditemukan
         $response = ['success' => false, 'message' => 'File not found'];
     }
+
     $stmtCheck->close();
+    echo json_encode($response);
+
 } else {
-    // Kirim respons jika request tidak valid
     $response = ['success' => false, 'message' => 'Invalid request'];
+    echo json_encode($response);
 }
-
-// Log respons untuk debugging
-error_log("Response: " . json_encode($response));
-
-// Kirim respons sebagai JSON
-echo json_encode($response);
 ?>
